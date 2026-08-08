@@ -20,6 +20,37 @@ function normalizeWindow(window) {
   };
 }
 
+function normalizeWindowCandidate(rawWindow, source) {
+  if (!rawWindow) return null;
+
+  const normalized = normalizeWindow(rawWindow);
+  if (!normalized) return null;
+
+  return {
+    source,
+    ...normalized,
+  };
+}
+
+const FIVE_HOUR_MINUTES = 300;
+const WEEKLY_MINUTES = 10_080;
+const FIVE_HOUR_TOLERANCE = 15;
+const WEEKLY_TOLERANCE = 504;
+
+function classifyWindow(minutes) {
+  if (!Number.isFinite(minutes) || minutes <= 0) return null;
+
+  if (Math.abs(minutes - FIVE_HOUR_MINUTES) <= FIVE_HOUR_TOLERANCE) {
+    return "five_hour";
+  }
+
+  if (Math.abs(minutes - WEEKLY_MINUTES) <= WEEKLY_TOLERANCE) {
+    return "weekly";
+  }
+
+  return null;
+}
+
 function firstSome(...values) {
   return values.find((value) => value !== undefined && value !== null);
 }
@@ -44,26 +75,70 @@ function formatResetTime(epochSeconds, includeDate) {
 }
 
 function normalizeLimitStatus(status) {
-  if (!status || String(status).toLowerCase() === "unknown") return "OK";
-  return status;
+  if (!status) return "OK";
+
+  if (typeof status === "string") {
+    return status.toLowerCase() === "unknown" ? "OK" : status;
+  }
+
+  if (typeof status === "object") {
+    const type = status.type ?? status.kind ?? status.code ?? status.state;
+    const details = status.details ?? status.reason ?? status.message;
+    if (!type) return "OK";
+    if (!details) return String(type);
+    return `${type} (${details})`;
+  }
+
+  return String(status) || "OK";
 }
 
-function normalizeSnapshot(payload) {
+export function normalizeSnapshot(payload) {
   const rateLimit = payload.rate_limit ?? payload.rateLimits ?? {};
-  const primary = normalizeWindow(
-    firstSome(rateLimit.primary_window, rateLimit.primary),
-  );
-  const secondary = normalizeWindow(
-    firstSome(rateLimit.secondary_window, rateLimit.secondary),
-  );
+  const candidateWindows = [
+    normalizeWindowCandidate(
+      firstSome(rateLimit.primary_window, rateLimit.primary),
+      "primary",
+    ),
+    normalizeWindowCandidate(
+      firstSome(rateLimit.secondary_window, rateLimit.secondary),
+      "secondary",
+    ),
+  ].filter(Boolean);
+
+  const assigned = {
+    five_hour: null,
+    weekly: null,
+  };
+  const source = {
+    five_hour: null,
+    weekly: null,
+  };
+
+  for (const candidate of candidateWindows) {
+    const kind = classifyWindow(candidate.window_minutes);
+    if (kind === "five_hour" && !assigned.five_hour) {
+      assigned.five_hour = candidate;
+      source.five_hour = candidate.source;
+      continue;
+    }
+
+    if (kind === "weekly" && !assigned.weekly) {
+      assigned.weekly = candidate;
+      source.weekly = candidate.source;
+    }
+  }
 
   return {
     source: "codex_backend",
     captured_at: new Date().toISOString(),
     plan: payload.plan_type ?? payload.planType ?? null,
     limit_id: "codex",
-    primary,
-    secondary,
+    primary: assigned.five_hour,
+    secondary: assigned.weekly,
+    five_hour_source: source.five_hour,
+    weekly_source: source.weekly,
+    raw_primary_window_minutes: candidateWindows[0]?.window_minutes ?? null,
+    raw_secondary_window_minutes: candidateWindows[1]?.window_minutes ?? null,
     credits: payload.credits
       ? {
           has_credits: Boolean(payload.credits.has_credits),
@@ -122,5 +197,9 @@ export function flattenForMqtt(snapshot) {
     rate_limit_reached_type: normalizeLimitStatus(
       snapshot.rate_limit_reached_type,
     ),
+    five_hour_source: snapshot.five_hour_source ?? null,
+    weekly_source: snapshot.weekly_source ?? null,
+    raw_primary_window_minutes: snapshot.raw_primary_window_minutes ?? null,
+    raw_secondary_window_minutes: snapshot.raw_secondary_window_minutes ?? null,
   };
 }

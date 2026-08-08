@@ -46,9 +46,16 @@ async function pollOnce() {
     const state = flattenForMqtt(usage);
     await publishAvailability(client, config, "online");
     await publishState(client, config, state);
-    console.log(
-      `Published Codex usage: 5h ${state.primary_used_percent ?? "?"}% used, weekly ${state.secondary_used_percent ?? "?"}% used.`,
-    );
+    const fiveHourStatus =
+      state.primary_used_percent === null
+        ? "5h unavailable"
+        : `${state.primary_used_percent}% used`;
+    const weeklyStatus =
+      state.secondary_used_percent === null
+        ? "weekly unavailable"
+        : `${state.secondary_used_percent}% used`;
+
+    console.log(`Published Codex usage: ${fiveHourStatus}, weekly ${weeklyStatus}.`);
   } catch (error) {
     await publishAvailability(client, config, "offline").catch(() => {});
     console.error(`Poll failed: ${error.message}`);

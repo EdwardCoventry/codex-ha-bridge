@@ -61,8 +61,17 @@ All sensor values come from the retained JSON state payload on `codex/usage/stat
 1. The bridge reads Codex authentication data from your local Codex configuration directory, or from an optional access token fallback.
 2. It requests Codex usage information from the Codex backend usage endpoint.
 3. It flattens the response into simple values suitable for MQTT state payloads.
-4. It publishes MQTT Discovery configs so Home Assistant creates the sensors automatically.
-5. It periodically republishes the current usage state and availability.
+4. It classifies raw usage windows by duration:
+   - `~300` minutes → 5-hour window (`primary_*` fields).
+   - `~10,080` minutes → weekly window (`secondary_*` fields).
+   - The 5-hour window may be missing, and in that case 5-hour fields stay `null`.
+   - Unknown windows are left unmapped (`null`).
+5. It publishes MQTT Discovery configs so Home Assistant creates the sensors automatically.
+6. It periodically republishes the current usage state and availability.
+
+Retained payload includes additional diagnostics:
+- `five_hour_source` / `weekly_source` (`primary` or `secondary` when mapped).
+- `raw_primary_window_minutes` / `raw_secondary_window_minutes` (raw detected window durations).
 
 Default MQTT topics:
 
@@ -118,6 +127,18 @@ Or through npm:
 ```powershell
 npm start
 ```
+
+On a Homeberry installation, MQTT credentials are also loaded automatically from
+the sibling `homeberry-tokens/mqtt.json` file. Set `HOMEBERRY_TOKENS_DIR` only when
+that secure directory lives elsewhere. Explicit `MQTT_URL`, `MQTT_USERNAME`, and
+`MQTT_PASSWORD` environment values take precedence.
+
+## Raspberry Pi service
+
+The checked-in `systemd/codex-ha-bridge.service` runs the bridge continuously on
+the Homeberry Raspberry Pi. It uses `/home/rberry/.codex/auth.json` for Codex auth
+and `/home/rberry/Desktop/code/homeberry-tokens/mqtt.json` for MQTT credentials;
+neither secret file is copied into this repository.
 
 If you are using the Windows helper:
 
@@ -249,13 +270,19 @@ severity:
 
 ## Development / validation
 
-This project has no npm dependencies. To validate JavaScript syntax:
+This project has no npm dependencies. To validate JavaScript syntax and behavior:
 
 ```powershell
 npm run check
 ```
 
-The check script runs `node --check` against the source files.
+`npm run check` runs `node --check` against the source files and tests.
+
+```powershell
+npm test
+```
+
+`npm test` runs Node's built-in test runner (`node --test`) for bridge parsing and mapping.
 
 ---
 
@@ -297,3 +324,4 @@ The check script runs `node --check` against the source files.
 This project uses the Codex backend usage endpoint used by Codex itself. It is not a separately documented public API.
 
 Because of that, endpoint paths, authentication behavior, or response formats may change without notice. If that happens, update the bridge before relying on it for automations or monitoring.
+This bridge keeps `primary_*` fields for 5-hour data and `secondary_*` fields for weekly data while preserving Home Assistant compatibility IDs.

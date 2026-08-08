@@ -26,6 +26,21 @@ function loadDotEnv(filePath) {
   }
 }
 
+function loadHomeberryMqttTokens() {
+  const tokensDir = process.env.HOMEBERRY_TOKENS_DIR || path.resolve(process.cwd(), "..", "homeberry-tokens");
+  const tokensPath = path.join(tokensDir, "mqtt.json");
+  if (!fs.existsSync(tokensPath)) return {};
+
+  const payload = JSON.parse(fs.readFileSync(tokensPath, "utf8"));
+  const broker = String(payload.MQTT_BROKER || "").trim();
+  const port = String(payload.MQTT_PORT || "1883").trim();
+  return {
+    url: broker ? `mqtt://${broker}:${port}` : undefined,
+    username: payload.MQTT_USERNAME || undefined,
+    password: payload.MQTT_PASSWORD || undefined,
+  };
+}
+
 function defaultCodexHome() {
   return path.join(os.homedir(), ".codex");
 }
@@ -39,12 +54,13 @@ function intEnv(name, fallback) {
 
 export function loadConfig() {
   loadDotEnv(path.resolve(process.cwd(), ".env"));
+  const mqttTokens = loadHomeberryMqttTokens();
 
   return {
     mqtt: {
-      url: process.env.MQTT_URL || "mqtt://homeassistant.local:1883",
-      username: process.env.MQTT_USERNAME || undefined,
-      password: process.env.MQTT_PASSWORD || undefined,
+      url: process.env.MQTT_URL || mqttTokens.url || "mqtt://homeassistant.local:1883",
+      username: process.env.MQTT_USERNAME || mqttTokens.username,
+      password: process.env.MQTT_PASSWORD || mqttTokens.password,
       baseTopic: process.env.MQTT_BASE_TOPIC || "codex/usage",
       discoveryPrefix: process.env.HA_DISCOVERY_PREFIX || "homeassistant",
     },

@@ -1,5 +1,7 @@
 .env
 logs/
+phase*-foreground.log
+phase*-foreground.err
 node_modules/
 npm-debug.log*
 .DS_Store

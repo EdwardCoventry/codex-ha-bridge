@@ -1,0 +1,18 @@
+[Unit]
+Description=Codex usage to Home Assistant MQTT bridge
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=rberry
+WorkingDirectory=/home/rberry/Desktop/code/codex-ha-bridge
+Environment=CODEX_HOME=/home/rberry/.codex
+Environment=HOMEBERRY_TOKENS_DIR=/home/rberry/Desktop/code/homeberry-tokens
+ExecStart=/usr/bin/node src/index.js
+Restart=always
+RestartSec=30
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
